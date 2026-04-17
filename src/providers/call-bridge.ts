@@ -1,4 +1,5 @@
 import type { VoiceAudioInput } from "@cloudflare/voice/client";
+import { TelnyxRTC } from "@telnyx/webrtc";
 
 /**
  * Configuration for the TelnyxCallBridge.
@@ -40,6 +41,7 @@ export class TelnyxCallBridge implements VoiceAudioInput {
   private readonly config: TelnyxCallBridgeConfig;
   private _connected = false;
   private _activeCall: unknown | null = null;
+  private client: TelnyxRTC | null = null;
 
   constructor(config: TelnyxCallBridgeConfig) {
     this.config = config;
@@ -57,12 +59,71 @@ export class TelnyxCallBridge implements VoiceAudioInput {
 
   /** Connect to Telnyx and start listening for calls. */
   async start(): Promise<void> {
-    // Implemented in Task 3
-    throw new Error("Not implemented");
+    this.client = new TelnyxRTC({
+      login_token: this.config.loginToken,
+      debug: this.config.debug,
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      this.client!.on("telnyx.ready", () => {
+        this._connected = true;
+        resolve();
+      });
+
+      this.client!.on("telnyx.error", (error: unknown) => {
+        reject(error);
+      });
+
+      this.client!.on("telnyx.notification", (notification: any) => {
+        this.handleNotification(notification);
+      });
+
+      this.client!.connect();
+    });
   }
 
   /** Disconnect from Telnyx and clean up all resources. */
   stop(): void {
-    // Implemented in Task 3
+    this._activeCall = null;
+    this._connected = false;
+    if (this.client) {
+      this.client.disconnect();
+      this.client = null;
+    }
+  }
+
+  private handleNotification(notification: any): void {
+    if (notification.type !== "callUpdate" || !notification.call) return;
+
+    const call = notification.call;
+
+    switch (call.state) {
+      case "ringing":
+        this._activeCall = call;
+        if (this.config.autoAnswer) {
+          call.answer();
+        }
+        break;
+
+      case "active":
+        this._activeCall = call;
+        this.startAudioCapture(call);
+        break;
+
+      case "hangup":
+      case "destroy":
+      case "purge":
+        this.stopAudioCapture();
+        this._activeCall = null;
+        break;
+    }
+  }
+
+  private startAudioCapture(_call: any): void {
+    // Implemented in Task 5
+  }
+
+  private stopAudioCapture(): void {
+    // Implemented in Task 5
   }
 }
