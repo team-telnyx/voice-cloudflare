@@ -90,6 +90,40 @@ export class TelnyxCallBridge implements VoiceAudioInput {
     });
   }
 
+  /** Answer the current inbound call. */
+  answer(): void {
+    if (!this._activeCall) throw new Error("No active call");
+    (this._activeCall as any).answer();
+  }
+
+  /** End the active call. */
+  hangup(): void {
+    if (!this._activeCall) return;
+    (this._activeCall as any).hangup();
+  }
+
+  /**
+   * Initiate an outbound PSTN call.
+   * @param destination Phone number or SIP URI to call.
+   * @param callerNumber The caller ID number to present.
+   * @returns The Telnyx Call object.
+   */
+  dial(destination: string, callerNumber?: string): unknown {
+    if (!this.client) throw new Error("Not connected — call start() first");
+    const call = (this.client as any).newCall({
+      destinationNumber: destination,
+      callerNumber,
+    });
+    this._activeCall = call;
+    return call;
+  }
+
+  /** Send DTMF digits on the active call. */
+  sendDTMF(digits: string): void {
+    if (!this._activeCall) throw new Error("No active call");
+    (this._activeCall as any).dtmf(digits);
+  }
+
   /**
    * Inject PCM audio into the active phone call (agent → caller).
    * Accepts 16kHz mono Int16 PCM. No-op if no active call.

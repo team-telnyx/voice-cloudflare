@@ -300,6 +300,106 @@ describe("TelnyxCallBridge", () => {
     });
   });
 
+  describe("call actions", () => {
+    let bridge: TelnyxCallBridge;
+    let notificationHandler: (notification: any) => void;
+    let mockClient: any;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+
+      vi.stubGlobal("AudioContext", vi.fn(() => ({
+        audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
+        createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
+        createMediaStreamDestination: vi.fn(() => ({ stream: { getAudioTracks: () => [] } })),
+        close: vi.fn(),
+        sampleRate: 16000,
+      })));
+      vi.stubGlobal("AudioWorkletNode", vi.fn(() => ({
+        port: { onmessage: null, postMessage: vi.fn() },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      })));
+      vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:mock"), revokeObjectURL: vi.fn() });
+      vi.stubGlobal("Blob", vi.fn());
+
+      const { TelnyxRTC, __mockClient } = await import("@telnyx/webrtc") as any;
+      const handlers: Record<string, Function> = {};
+      const mockNewCall = vi.fn(() => ({
+        id: "outbound-1",
+        state: "trying",
+        peer: { instance: { getSenders: vi.fn(() => []) } },
+        remoteStream: null,
+        answer: vi.fn(),
+        hangup: vi.fn(),
+        dtmf: vi.fn(),
+      }));
+
+      __mockClient.on.mockImplementation((event: string, cb: Function) => {
+        handlers[event] = cb;
+      });
+      __mockClient.newCall = mockNewCall;
+      mockClient = __mockClient;
+
+      bridge = new TelnyxCallBridge({ loginToken: "jwt" });
+      const startPromise = bridge.start();
+      handlers["telnyx.ready"]();
+      await startPromise;
+      notificationHandler = handlers["telnyx.notification"];
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("answer() answers the active inbound call", () => {
+      const mockCall = {
+        id: "call-1", state: "ringing",
+        answer: vi.fn(), hangup: vi.fn(), remoteStream: null,
+      };
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      bridge.answer();
+      expect(mockCall.answer).toHaveBeenCalled();
+    });
+
+    it("answer() throws when no active call", () => {
+      expect(() => bridge.answer()).toThrow("No active call");
+    });
+
+    it("hangup() ends the active call", () => {
+      const mockCall = {
+        id: "call-1", state: "ringing",
+        answer: vi.fn(), hangup: vi.fn(), remoteStream: null,
+      };
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      bridge.hangup();
+      expect(mockCall.hangup).toHaveBeenCalled();
+    });
+
+    it("dial() initiates an outbound call", () => {
+      const call = bridge.dial("+18005551234", "+15551234567");
+      expect(mockClient.newCall).toHaveBeenCalledWith(
+        expect.objectContaining({
+          destinationNumber: "+18005551234",
+          callerNumber: "+15551234567",
+        })
+      );
+      expect(call).toBeDefined();
+    });
+
+    it("sendDTMF() sends digits to the active call", () => {
+      const mockCall = {
+        id: "call-1", state: "active",
+        remoteStream: { getAudioTracks: () => [{ kind: "audio" }] },
+        peer: { instance: { getSenders: vi.fn(() => []) } },
+        answer: vi.fn(), hangup: vi.fn(), dtmf: vi.fn(),
+      };
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      bridge.sendDTMF("1234#");
+      expect(mockCall.dtmf).toHaveBeenCalledWith("1234#");
+    });
+  });
+
   describe("audio playback", () => {
     let bridge: TelnyxCallBridge;
     let notificationHandler: (notification: any) => void;
