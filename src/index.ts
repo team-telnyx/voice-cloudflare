@@ -11,3 +11,7 @@ export {
   TelnyxCallBridge,
   type TelnyxCallBridgeConfig,
 } from "./providers/call-bridge.js";
+export {
+  TelnyxJWTEndpoint,
+  type TelnyxJWTEndpointConfig,
+} from "./server/jwt-endpoint.js";
