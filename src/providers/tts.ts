@@ -5,7 +5,7 @@
  * providing streaming text-to-speech synthesis via Telnyx.
  */
 
-import { TelnyxClient, type TelnyxClientConfig } from "./client.js";
+import { TelnyxClient, type TelnyxClientConfig } from "../client.js";
 
 export interface TelnyxTTSConfig extends TelnyxClientConfig {
   /** Voice ID for synthesis */

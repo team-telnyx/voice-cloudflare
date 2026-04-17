@@ -202,7 +202,7 @@ export class TelnyxCallBridge implements VoiceAudioInput {
       const rms = computeRMS(float32);
       this.onAudioLevel?.(rms);
       const int16 = float32ToInt16(float32);
-      this.onAudioData?.(int16.buffer);
+      this.onAudioData?.(int16.buffer as ArrayBuffer);
     };
 
     this.captureSource.connect(this.captureWorklet);
