@@ -299,4 +299,117 @@ describe("TelnyxCallBridge", () => {
       expect(audioLevelSpy.mock.calls[0][0]).toBeCloseTo(0.5, 1);
     });
   });
+
+  describe("audio playback", () => {
+    let bridge: TelnyxCallBridge;
+    let notificationHandler: (notification: any) => void;
+    let mockCall: any;
+
+    const mockPlaybackWorkletNode = {
+      port: {
+        onmessage: null,
+        postMessage: vi.fn(),
+      },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    const mockDestinationNode = {
+      stream: {
+        getAudioTracks: () => [{ kind: "audio", id: "mock-track" }],
+      },
+    };
+
+    const mockSender = {
+      track: { kind: "audio" },
+      replaceTrack: vi.fn().mockResolvedValue(undefined),
+    };
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+
+      // AudioContext mock returns different objects based on sampleRate
+      vi.stubGlobal("AudioContext", vi.fn((opts: any) => {
+        if (opts?.sampleRate === 16000) {
+          return {
+            audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
+            createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
+            close: vi.fn(),
+            sampleRate: 16000,
+          };
+        }
+        // 48kHz playback context
+        return {
+          audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
+          createMediaStreamDestination: vi.fn(() => mockDestinationNode),
+          close: vi.fn(),
+          sampleRate: 48000,
+        };
+      }));
+
+      vi.stubGlobal("AudioWorkletNode", vi.fn(() => mockPlaybackWorkletNode));
+      vi.stubGlobal("URL", {
+        createObjectURL: vi.fn(() => "blob:mock-url"),
+        revokeObjectURL: vi.fn(),
+      });
+      vi.stubGlobal("Blob", vi.fn());
+
+      const { __mockClient } = await import("@telnyx/webrtc") as any;
+      const handlers: Record<string, Function> = {};
+      __mockClient.on.mockImplementation((event: string, cb: Function) => {
+        handlers[event] = cb;
+      });
+
+      bridge = new TelnyxCallBridge({ loginToken: "jwt", autoAnswer: true });
+      const startPromise = bridge.start();
+      handlers["telnyx.ready"]();
+      await startPromise;
+      notificationHandler = handlers["telnyx.notification"];
+
+      mockCall = {
+        id: "call-123",
+        state: "active",
+        remoteStream: { getAudioTracks: () => [{ kind: "audio" }] },
+        peer: {
+          instance: {
+            getSenders: vi.fn(() => [mockSender]),
+          },
+        },
+        answer: vi.fn(),
+        hangup: vi.fn(),
+        dtmf: vi.fn(),
+      };
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("playAudio sends PCM data to the playback worklet", async () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+
+      // Wait for async playback setup
+      await vi.waitFor(() => {
+        expect(mockPlaybackWorkletNode.connect).toHaveBeenCalled();
+      });
+
+      const pcm = new Int16Array([100, -100, 200, -200]).buffer;
+      bridge.playAudio(pcm);
+
+      expect(mockPlaybackWorkletNode.port.postMessage).toHaveBeenCalled();
+    });
+
+    it("playAudio replaces the sender track on the peer connection", async () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+
+      await vi.waitFor(() => {
+        expect(mockSender.replaceTrack).toHaveBeenCalled();
+      });
+    });
+
+    it("playAudio is a no-op when no active call", () => {
+      const pcm = new Int16Array([100]).buffer;
+      expect(() => bridge.playAudio(pcm)).not.toThrow();
+    });
+  });
 });

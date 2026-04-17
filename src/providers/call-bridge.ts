@@ -1,6 +1,6 @@
 import type { VoiceAudioInput } from "@cloudflare/voice/client";
 import { TelnyxRTC } from "@telnyx/webrtc";
-import { float32ToInt16, computeRMS, PCM_CAPTURE_PROCESSOR_SOURCE } from "../audio/utils.js";
+import { float32ToInt16, computeRMS, PCM_CAPTURE_PROCESSOR_SOURCE, PCM_PLAYBACK_PROCESSOR_SOURCE } from "../audio/utils.js";
 
 /**
  * Configuration for the TelnyxCallBridge.
@@ -47,6 +47,9 @@ export class TelnyxCallBridge implements VoiceAudioInput {
   private captureSource: MediaStreamAudioSourceNode | null = null;
   private captureWorklet: AudioWorkletNode | null = null;
   private captureBlobUrl: string | null = null;
+  private playbackContext: AudioContext | null = null;
+  private playbackWorklet: AudioWorkletNode | null = null;
+  private playbackBlobUrl: string | null = null;
 
   constructor(config: TelnyxCallBridgeConfig) {
     this.config = config;
@@ -87,9 +90,24 @@ export class TelnyxCallBridge implements VoiceAudioInput {
     });
   }
 
+  /**
+   * Inject PCM audio into the active phone call (agent → caller).
+   * Accepts 16kHz mono Int16 PCM. No-op if no active call.
+   */
+  playAudio(pcm: ArrayBuffer): void {
+    if (!this.playbackWorklet) return;
+    const int16 = new Int16Array(pcm);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768;
+    }
+    this.playbackWorklet.port.postMessage(float32);
+  }
+
   /** Disconnect from Telnyx and clean up all resources. */
   stop(): void {
     this.stopAudioCapture();
+    this.stopAudioPlayback();
     this._activeCall = null;
     this._connected = false;
     if (this.client) {
@@ -114,12 +132,14 @@ export class TelnyxCallBridge implements VoiceAudioInput {
       case "active":
         this._activeCall = call;
         this.startAudioCapture(call);
+        this.startAudioPlayback(call);
         break;
 
       case "hangup":
       case "destroy":
       case "purge":
         this.stopAudioCapture();
+        this.stopAudioPlayback();
         this._activeCall = null;
         break;
     }
@@ -170,6 +190,52 @@ export class TelnyxCallBridge implements VoiceAudioInput {
     if (this.captureBlobUrl) {
       URL.revokeObjectURL(this.captureBlobUrl);
       this.captureBlobUrl = null;
+    }
+  }
+
+  private async startAudioPlayback(call: any): Promise<void> {
+    const peerConnection = call.peer?.instance as RTCPeerConnection | undefined;
+    if (!peerConnection) return;
+
+    this.playbackContext = new AudioContext({ sampleRate: 48000 });
+
+    const blob = new Blob([PCM_PLAYBACK_PROCESSOR_SOURCE], {
+      type: "application/javascript",
+    });
+    this.playbackBlobUrl = URL.createObjectURL(blob);
+    await this.playbackContext.audioWorklet.addModule(this.playbackBlobUrl);
+
+    this.playbackWorklet = new AudioWorkletNode(
+      this.playbackContext,
+      "pcm-playback-processor"
+    );
+
+    const destination = this.playbackContext.createMediaStreamDestination();
+    this.playbackWorklet.connect(destination);
+
+    const audioTrack = destination.stream.getAudioTracks()[0];
+    if (audioTrack) {
+      const sender = peerConnection
+        .getSenders()
+        .find((s: RTCRtpSender) => s.track?.kind === "audio");
+      if (sender) {
+        await sender.replaceTrack(audioTrack);
+      }
+    }
+  }
+
+  private stopAudioPlayback(): void {
+    if (this.playbackWorklet) {
+      this.playbackWorklet.disconnect();
+      this.playbackWorklet = null;
+    }
+    if (this.playbackContext) {
+      this.playbackContext.close();
+      this.playbackContext = null;
+    }
+    if (this.playbackBlobUrl) {
+      URL.revokeObjectURL(this.playbackBlobUrl);
+      this.playbackBlobUrl = null;
     }
   }
 }
