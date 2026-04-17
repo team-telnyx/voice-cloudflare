@@ -126,15 +126,25 @@ export class TelnyxCallBridge implements VoiceAudioInput {
 
   /**
    * Inject PCM audio into the active phone call (agent → caller).
-   * Accepts 16kHz mono Int16 PCM. No-op if no active call.
+   * Accepts 16kHz mono Int16 PCM. Upsamples to 48kHz for WebRTC.
+   * No-op if no active call.
    */
   playAudio(pcm: ArrayBuffer): void {
     if (!this.playbackWorklet) return;
     const int16 = new Int16Array(pcm);
-    const float32 = new Float32Array(int16.length);
+
+    // Upsample 16kHz → 48kHz (3x) via linear interpolation
+    const upsampleRatio = 3;
+    const float32 = new Float32Array(int16.length * upsampleRatio);
     for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768;
+      const current = int16[i] / 32768;
+      const next = i < int16.length - 1 ? int16[i + 1] / 32768 : current;
+      const base = i * upsampleRatio;
+      for (let j = 0; j < upsampleRatio; j++) {
+        float32[base + j] = current + (next - current) * (j / upsampleRatio);
+      }
     }
+
     this.playbackWorklet.port.postMessage(float32);
   }
 

@@ -485,18 +485,21 @@ describe("TelnyxCallBridge", () => {
       vi.unstubAllGlobals();
     });
 
-    it("playAudio sends PCM data to the playback worklet", async () => {
+    it("playAudio upsamples 16kHz to 48kHz (3x) and sends to worklet", async () => {
       notificationHandler({ type: "callUpdate", call: mockCall });
 
-      // Wait for async playback setup
       await vi.waitFor(() => {
         expect(mockPlaybackWorkletNode.connect).toHaveBeenCalled();
       });
 
+      // 4 samples at 16kHz should become 12 samples at 48kHz
       const pcm = new Int16Array([100, -100, 200, -200]).buffer;
       bridge.playAudio(pcm);
 
-      expect(mockPlaybackWorkletNode.port.postMessage).toHaveBeenCalled();
+      expect(mockPlaybackWorkletNode.port.postMessage).toHaveBeenCalledTimes(1);
+      const posted = mockPlaybackWorkletNode.port.postMessage.mock.calls[0][0];
+      expect(posted).toBeInstanceOf(Float32Array);
+      expect(posted.length).toBe(12); // 4 * 3 = 12
     });
 
     it("playAudio replaces the sender track on the peer connection", async () => {
@@ -510,6 +513,13 @@ describe("TelnyxCallBridge", () => {
     it("playAudio is a no-op when no active call", () => {
       const pcm = new Int16Array([100]).buffer;
       expect(() => bridge.playAudio(pcm)).not.toThrow();
+    });
+  });
+
+  describe("package exports", () => {
+    it("exports TelnyxCallBridge from the package root", async () => {
+      const mod = await import("../../src/index.js");
+      expect(mod.TelnyxCallBridge).toBeDefined();
     });
   });
 });
