@@ -1,5 +1,6 @@
 import type { VoiceAudioInput } from "@cloudflare/voice/client";
 import { TelnyxRTC } from "@telnyx/webrtc";
+import { float32ToInt16, computeRMS, PCM_CAPTURE_PROCESSOR_SOURCE } from "../audio/utils.js";
 
 /**
  * Configuration for the TelnyxCallBridge.
@@ -42,6 +43,10 @@ export class TelnyxCallBridge implements VoiceAudioInput {
   private _connected = false;
   private _activeCall: unknown | null = null;
   private client: TelnyxRTC | null = null;
+  private captureContext: AudioContext | null = null;
+  private captureSource: MediaStreamAudioSourceNode | null = null;
+  private captureWorklet: AudioWorkletNode | null = null;
+  private captureBlobUrl: string | null = null;
 
   constructor(config: TelnyxCallBridgeConfig) {
     this.config = config;
@@ -84,6 +89,7 @@ export class TelnyxCallBridge implements VoiceAudioInput {
 
   /** Disconnect from Telnyx and clean up all resources. */
   stop(): void {
+    this.stopAudioCapture();
     this._activeCall = null;
     this._connected = false;
     if (this.client) {
@@ -119,11 +125,51 @@ export class TelnyxCallBridge implements VoiceAudioInput {
     }
   }
 
-  private startAudioCapture(_call: any): void {
-    // Implemented in Task 5
+  private async startAudioCapture(call: any): Promise<void> {
+    const remoteStream = call.remoteStream;
+    if (!remoteStream) return;
+
+    this.captureContext = new AudioContext({ sampleRate: 16000 });
+
+    const blob = new Blob([PCM_CAPTURE_PROCESSOR_SOURCE], {
+      type: "application/javascript",
+    });
+    this.captureBlobUrl = URL.createObjectURL(blob);
+    await this.captureContext.audioWorklet.addModule(this.captureBlobUrl);
+
+    this.captureSource = this.captureContext.createMediaStreamSource(remoteStream);
+    this.captureWorklet = new AudioWorkletNode(
+      this.captureContext,
+      "pcm-capture-processor"
+    );
+
+    this.captureWorklet.port.onmessage = (event: MessageEvent) => {
+      const float32: Float32Array = event.data;
+      const rms = computeRMS(float32);
+      this.onAudioLevel?.(rms);
+      const int16 = float32ToInt16(float32);
+      this.onAudioData?.(int16.buffer);
+    };
+
+    this.captureSource.connect(this.captureWorklet);
   }
 
   private stopAudioCapture(): void {
-    // Implemented in Task 5
+    if (this.captureWorklet) {
+      this.captureWorklet.disconnect();
+      this.captureWorklet = null;
+    }
+    if (this.captureSource) {
+      this.captureSource.disconnect();
+      this.captureSource = null;
+    }
+    if (this.captureContext) {
+      this.captureContext.close();
+      this.captureContext = null;
+    }
+    if (this.captureBlobUrl) {
+      URL.revokeObjectURL(this.captureBlobUrl);
+      this.captureBlobUrl = null;
+    }
   }
 }

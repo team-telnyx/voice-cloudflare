@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TelnyxCallBridge } from "../../src/providers/call-bridge.js";
 
 vi.mock("@telnyx/webrtc", () => {
@@ -168,6 +168,135 @@ describe("TelnyxCallBridge", () => {
       mockCall.state = "hangup";
       notificationHandler({ type: "callUpdate", call: mockCall });
       expect(bridge.activeCall).toBeNull();
+    });
+  });
+
+  describe("audio capture", () => {
+    let bridge: TelnyxCallBridge;
+    let notificationHandler: (notification: any) => void;
+    let mockCall: any;
+    let workletMessageHandler: ((event: MessageEvent) => void) | null = null;
+
+    const mockWorkletNode = {
+      port: {
+        onmessage: null as ((event: MessageEvent) => void) | null,
+      },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    const mockSourceNode = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    const mockAudioContext = {
+      audioWorklet: {
+        addModule: vi.fn().mockResolvedValue(undefined),
+      },
+      createMediaStreamSource: vi.fn(() => mockSourceNode),
+      close: vi.fn(),
+      sampleRate: 16000,
+    };
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+
+      workletMessageHandler = null;
+      Object.defineProperty(mockWorkletNode.port, "onmessage", {
+        get: () => workletMessageHandler,
+        set: (handler) => {
+          workletMessageHandler = handler;
+        },
+        configurable: true,
+      });
+
+      vi.stubGlobal("AudioContext", vi.fn(() => mockAudioContext));
+      vi.stubGlobal("AudioWorkletNode", vi.fn(() => mockWorkletNode));
+      vi.stubGlobal("URL", {
+        createObjectURL: vi.fn(() => "blob:mock-url"),
+        revokeObjectURL: vi.fn(),
+      });
+      vi.stubGlobal("Blob", vi.fn());
+
+      const { __mockClient } = await import("@telnyx/webrtc") as any;
+      const handlers: Record<string, Function> = {};
+      __mockClient.on.mockImplementation((event: string, cb: Function) => {
+        handlers[event] = cb;
+      });
+
+      bridge = new TelnyxCallBridge({ loginToken: "jwt", autoAnswer: true });
+      const startPromise = bridge.start();
+      handlers["telnyx.ready"]();
+      await startPromise;
+      notificationHandler = handlers["telnyx.notification"];
+
+      mockCall = {
+        id: "call-123",
+        state: "active",
+        remoteStream: { getAudioTracks: () => [{ kind: "audio" }] },
+        answer: vi.fn(),
+        hangup: vi.fn(),
+        dtmf: vi.fn(),
+      };
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("creates AudioContext at 16kHz when call becomes active", () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      expect(AudioContext).toHaveBeenCalledWith({ sampleRate: 16000 });
+    });
+
+    it("creates MediaStreamSource from call.remoteStream", async () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      await vi.waitFor(() => {
+        expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledWith(mockCall.remoteStream);
+      });
+    });
+
+    it("loads the PCM capture AudioWorklet processor", () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      expect(mockAudioContext.audioWorklet.addModule).toHaveBeenCalled();
+    });
+
+    it("calls onAudioData with Int16 PCM when worklet posts audio", async () => {
+      const audioDataSpy = vi.fn();
+      bridge.onAudioData = audioDataSpy;
+
+      notificationHandler({ type: "callUpdate", call: mockCall });
+
+      await vi.waitFor(() => {
+        expect(workletMessageHandler).not.toBeNull();
+      });
+
+      const frame = new Float32Array([0.5, -0.5, 0.0, 1.0]);
+      workletMessageHandler!({ data: frame } as MessageEvent);
+
+      expect(audioDataSpy).toHaveBeenCalledTimes(1);
+      const pcm = audioDataSpy.mock.calls[0][0];
+      expect(pcm).toBeInstanceOf(ArrayBuffer);
+      const int16View = new Int16Array(pcm);
+      expect(int16View.length).toBe(4);
+    });
+
+    it("calls onAudioLevel with RMS value when worklet posts audio", async () => {
+      const audioLevelSpy = vi.fn();
+      bridge.onAudioLevel = audioLevelSpy;
+
+      notificationHandler({ type: "callUpdate", call: mockCall });
+
+      await vi.waitFor(() => {
+        expect(workletMessageHandler).not.toBeNull();
+      });
+
+      const frame = new Float32Array([0.5, -0.5, 0.5, -0.5]);
+      workletMessageHandler!({ data: frame } as MessageEvent);
+
+      expect(audioLevelSpy).toHaveBeenCalledTimes(1);
+      expect(audioLevelSpy.mock.calls[0][0]).toBeCloseTo(0.5, 1);
     });
   });
 });
