@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { TelnyxClient } from "../client.js";
+import { TelnyxClient } from "../src/client.js";
 
 describe("TelnyxClient", () => {
   it("uses default URLs when none provided", () => {

@@ -5,7 +5,7 @@
  * providing real-time transcription via Telnyx.
  */
 
-import { TelnyxClient, type TelnyxClientConfig } from "./client.js";
+import { TelnyxClient, type TelnyxClientConfig } from "../client.js";
 
 export interface TelnyxSTTConfig extends TelnyxClientConfig {
   /** Language code for transcription (default: "en") */
