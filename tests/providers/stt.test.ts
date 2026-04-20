@@ -140,3 +140,176 @@ describe("TelnyxSTT", () => {
     });
   });
 });
+
+describe("TelnyxSTTSession", () => {
+  describe("feed()", () => {
+    it("buffers audio chunks before WebSocket is open", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      const chunk = new ArrayBuffer(1024);
+      session.feed(chunk);
+
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it("flushes buffered chunks when WebSocket opens", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      const chunk1 = new ArrayBuffer(1024);
+      const chunk2 = new ArrayBuffer(512);
+      session.feed(chunk1);
+      session.feed(chunk2);
+
+      ws.simulateOpen();
+
+      expect(ws.send).toHaveBeenCalledTimes(2);
+      expect(ws.send).toHaveBeenNthCalledWith(1, chunk1);
+      expect(ws.send).toHaveBeenNthCalledWith(2, chunk2);
+    });
+
+    it("sends chunks directly when WebSocket is already open", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+
+      const chunk = new ArrayBuffer(2048);
+      session.feed(chunk);
+
+      expect(ws.send).toHaveBeenCalledWith(chunk);
+    });
+
+    it("does nothing after close()", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      session.close();
+
+      const chunk = new ArrayBuffer(1024);
+      session.feed(chunk);
+
+      // send was never called with audio (only ws.close was called)
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it("does nothing after WebSocket error", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateError();
+
+      const chunk = new ArrayBuffer(1024);
+      session.feed(chunk);
+
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("transcript callbacks", () => {
+    it("fires onInterim for non-final transcripts", () => {
+      const onInterim = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession({ onInterim });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      ws.simulateMessage({ transcript: "Hello", is_final: false, confidence: 0.8 });
+
+      expect(onInterim).toHaveBeenCalledWith("Hello");
+      expect(onInterim).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires onUtterance for final transcripts", () => {
+      const onUtterance = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession({ onUtterance });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      ws.simulateMessage({ transcript: "Hello world", is_final: true, confidence: 0.95 });
+
+      expect(onUtterance).toHaveBeenCalledWith("Hello world");
+      expect(onUtterance).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires onInterim multiple times as transcript builds up", () => {
+      const onInterim = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession({ onInterim });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      ws.simulateMessage({ transcript: "Hel", is_final: false });
+      ws.simulateMessage({ transcript: "Hello", is_final: false });
+      ws.simulateMessage({ transcript: "Hello wor", is_final: false });
+
+      expect(onInterim).toHaveBeenCalledTimes(3);
+      expect(onInterim).toHaveBeenNthCalledWith(1, "Hel");
+      expect(onInterim).toHaveBeenNthCalledWith(2, "Hello");
+      expect(onInterim).toHaveBeenNthCalledWith(3, "Hello wor");
+    });
+
+    it("ignores messages with empty transcript", () => {
+      const onInterim = vi.fn();
+      const onUtterance = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      stt.createSession({ onInterim, onUtterance });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      ws.simulateMessage({ transcript: "", is_final: false });
+      ws.simulateMessage({ transcript: "", is_final: true });
+
+      expect(onInterim).not.toHaveBeenCalled();
+      expect(onUtterance).not.toHaveBeenCalled();
+    });
+
+    it("ignores messages without transcript field", () => {
+      const onInterim = vi.fn();
+      const onUtterance = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      stt.createSession({ onInterim, onUtterance });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      ws.simulateMessage({ error: "something went wrong" });
+
+      expect(onInterim).not.toHaveBeenCalled();
+      expect(onUtterance).not.toHaveBeenCalled();
+    });
+
+    it("ignores unparseable messages", () => {
+      const onInterim = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      stt.createSession({ onInterim });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      // Send raw string that is not valid JSON
+      ws.onmessage?.(new MessageEvent("message", { data: "not json" }));
+
+      expect(onInterim).not.toHaveBeenCalled();
+    });
+
+    it("works without any callbacks provided", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      // Should not throw
+      expect(() => {
+        ws.simulateMessage({ transcript: "Hello", is_final: false });
+        ws.simulateMessage({ transcript: "Hello", is_final: true });
+      }).not.toThrow();
+    });
+  });
+});
