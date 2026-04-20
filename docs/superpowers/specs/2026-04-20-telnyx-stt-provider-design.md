@@ -40,7 +40,7 @@ interface TranscriberSession {
 
 **Endpoint:** `wss://api.telnyx.com/v2/speech-to-text/transcription`
 
-**Authentication:** `Authorization: Bearer <API_KEY>` header on WebSocket handshake.
+**Authentication:** API key passed as `token` query parameter (the standard `WebSocket` constructor in browser/Workers runtimes does not support custom headers, so we use query param auth instead of the `Authorization` header shown in the Python docs).
 
 **Query parameters:**
 
