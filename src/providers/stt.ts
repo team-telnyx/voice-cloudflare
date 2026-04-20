@@ -89,6 +89,11 @@ export class TelnyxSTTSession {
     const url = new URL(params.sttUrl);
     url.searchParams.set("transcription_engine", params.engine);
     url.searchParams.set("input_format", params.inputFormat);
+    url.searchParams.set("language", params.language);
+    url.searchParams.set("interim_results", String(params.interimResults));
+    if (params.transcriptionModel) {
+      url.searchParams.set("transcription_model", params.transcriptionModel);
+    }
     url.searchParams.set("token", params.apiKey);
 
     this.ws = new WebSocket(url.toString());

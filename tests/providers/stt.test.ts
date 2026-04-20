@@ -94,7 +94,7 @@ describe("TelnyxSTT", () => {
       expect(MockWebSocket.instances).toHaveLength(1);
       const ws = MockWebSocket.instances[0];
       expect(ws.url).toBe(
-        "wss://api.telnyx.com/v2/speech-to-text/transcription?transcription_engine=Telnyx&input_format=pcm&token=test-key"
+        "wss://api.telnyx.com/v2/speech-to-text/transcription?transcription_engine=Telnyx&input_format=pcm&language=en&interim_results=true&token=test-key"
       );
     });
 
@@ -128,15 +128,36 @@ describe("TelnyxSTT", () => {
 
       const ws = MockWebSocket.instances[0];
       expect(ws.url).toBe(
-        "ws://localhost:9000/stt?transcription_engine=Telnyx&input_format=pcm&token=test-key"
+        "ws://localhost:9000/stt?transcription_engine=Telnyx&input_format=pcm&language=en&interim_results=true&token=test-key"
       );
     });
 
-    it("passes session-level language override", () => {
+    it("passes session-level language override to the WebSocket URL", () => {
       const stt = new TelnyxSTT({ apiKey: "test-key", language: "en" });
-      const onUtterance = vi.fn();
-      const session = stt.createSession({ language: "fr", onUtterance });
-      expect(session).toBeDefined();
+      stt.createSession({ language: "fr" });
+
+      const ws = MockWebSocket.instances[0];
+      expect(ws.url).toContain("language=fr");
+    });
+
+    it("includes transcription_model when provided", () => {
+      const stt = new TelnyxSTT({
+        apiKey: "test-key",
+        engine: "Deepgram",
+        transcriptionModel: "nova-3",
+      });
+      stt.createSession();
+
+      const ws = MockWebSocket.instances[0];
+      expect(ws.url).toContain("transcription_model=nova-3");
+    });
+
+    it("omits transcription_model when not provided", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      stt.createSession();
+
+      const ws = MockWebSocket.instances[0];
+      expect(ws.url).not.toContain("transcription_model");
     });
   });
 });
