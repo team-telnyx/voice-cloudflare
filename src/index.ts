@@ -5,7 +5,11 @@
  */
 
 export { TelnyxClient, type TelnyxClientConfig } from "./client.js";
-export { TelnyxSTT, type TelnyxSTTConfig } from "./providers/stt.js";
+export {
+  TelnyxSTT,
+  type TelnyxSTTConfig,
+  type TelnyxSTTSessionOptions,
+} from "./providers/stt.js";
 export { TelnyxTTS, type TelnyxTTSConfig } from "./providers/tts.js";
 export {
   TelnyxCallBridge,
