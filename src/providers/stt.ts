@@ -94,6 +94,7 @@ export class TelnyxSTTSession {
     this.ws = new WebSocket(url.toString());
 
     this.ws.onopen = () => {
+      if (this.closed) return;
       for (const chunk of this.pendingChunks) {
         this.ws.send(chunk);
       }
@@ -131,6 +132,7 @@ export class TelnyxSTTSession {
   }
 
   private handleMessage(event: MessageEvent): void {
+    if (this.closed) return;
     let data: { transcript?: string; is_final?: boolean };
     try {
       data = JSON.parse(event.data as string);

@@ -312,4 +312,67 @@ describe("TelnyxSTTSession", () => {
       }).not.toThrow();
     });
   });
+
+  describe("close()", () => {
+    it("closes the WebSocket", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      session.close();
+
+      expect(ws.close).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears pending buffer on close", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      // Buffer some chunks before socket opens
+      session.feed(new ArrayBuffer(1024));
+      session.feed(new ArrayBuffer(1024));
+
+      session.close();
+
+      // Now open — buffered chunks should NOT be flushed
+      ws.simulateOpen();
+
+      expect(ws.send).not.toHaveBeenCalled();
+    });
+
+    it("is idempotent — calling close() twice does not throw", () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession();
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+
+      expect(() => {
+        session.close();
+        session.close();
+      }).not.toThrow();
+
+      // Only one actual close call
+      expect(ws.close).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops firing callbacks after close", () => {
+      const onInterim = vi.fn();
+      const onUtterance = vi.fn();
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      const session = stt.createSession({ onInterim, onUtterance });
+      const ws = MockWebSocket.instances[0];
+
+      ws.simulateOpen();
+      session.close();
+
+      ws.simulateMessage({ transcript: "Hello", is_final: false });
+      ws.simulateMessage({ transcript: "Hello", is_final: true });
+
+      expect(onInterim).not.toHaveBeenCalled();
+      expect(onUtterance).not.toHaveBeenCalled();
+    });
+  });
 });
