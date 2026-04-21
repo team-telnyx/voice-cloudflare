@@ -125,6 +125,14 @@ export class TelnyxCallBridge implements VoiceAudioInput {
   }
 
   /**
+   * Clear any buffered audio in the playback pipeline.
+   * Used during interrupt detection to stop stale audio from playing.
+   */
+  clearPlaybackBuffer(): void {
+    this.playbackWorklet?.port.postMessage("clear");
+  }
+
+  /**
    * Inject PCM audio into the active phone call (agent → caller).
    * Accepts 16kHz mono Int16 PCM. Upsamples to 48kHz for WebRTC.
    * No-op if no active call.

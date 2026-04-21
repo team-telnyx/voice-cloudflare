@@ -62,6 +62,10 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     this._buffer = [];
     this._maxBufferFrames = 50; // ~1s at 48kHz/128 samples per frame
     this.port.onmessage = (e) => {
+      if (e.data === 'clear') {
+        this._buffer = [];
+        return;
+      }
       this._buffer.push(e.data);
       // Evict oldest frames if buffer grows too large
       while (this._buffer.length > this._maxBufferFrames) {
