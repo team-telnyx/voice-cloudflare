@@ -1,0 +1,21 @@
+{
+  "name": "telnyx-voice-agent-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:client": "esbuild client/main.ts --bundle --outfile=public/client.js --format=esm --target=es2022",
+    "dev": "npm run build:client && wrangler dev",
+    "deploy": "npm run build:client && wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/voice": "^0.1.0",
+    "@telnyx/voice-cloudflare": "file:../../",
+    "agents": "^0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}

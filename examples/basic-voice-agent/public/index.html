@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telnyx Voice Agent</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 640px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      color: #1a1a1a;
+    }
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: #666; margin-top: 0; }
+    .controls { margin: 1.5rem 0; display: flex; gap: 0.5rem; }
+    button {
+      padding: 0.5rem 1.25rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button:hover:not(:disabled) { background: #f5f5f5; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #connect { background: #00c48f; color: #fff; border-color: #00c48f; }
+    #connect:hover:not(:disabled) { background: #00a87a; }
+    .status { margin: 1rem 0; }
+    .status strong { text-transform: capitalize; }
+    #transcript {
+      white-space: pre-wrap;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.9rem;
+      background: #f7f7f8;
+      padding: 1rem;
+      border-radius: 8px;
+      min-height: 120px;
+      border: 1px solid #e5e5e5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Telnyx Voice Agent</h1>
+  <p class="subtitle">Browser mic &rarr; Telnyx STT &rarr; Agent &rarr; Telnyx TTS &rarr; Speaker</p>
+
+  <div class="controls">
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <button id="mute" disabled>Mute</button>
+  </div>
+
+  <p class="status">Status: <strong id="status">Idle</strong></p>
+
+  <p>Transcript:</p>
+  <div id="transcript"></div>
+
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
