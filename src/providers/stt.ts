@@ -5,6 +5,7 @@
  * streaming audio to the Telnyx WebSocket STT API.
  */
 
+import type { Transcriber, TranscriberSession } from "@cloudflare/voice";
 import { TelnyxClient, type TelnyxClientConfig } from "../client.js";
 
 const DEFAULT_STT_URL = "wss://api.telnyx.com/v2/speech-to-text/transcription";
@@ -28,7 +29,7 @@ export interface TelnyxSTTSessionOptions {
   onUtterance?: (transcript: string) => void;
 }
 
-export class TelnyxSTT {
+export class TelnyxSTT implements Transcriber {
   private client: TelnyxClient;
   private engine: string;
   private language: string;
@@ -75,7 +76,7 @@ interface SessionParams {
   onUtterance?: (transcript: string) => void;
 }
 
-export class TelnyxSTTSession {
+export class TelnyxSTTSession implements TranscriberSession {
   private ws: WebSocket;
   private pendingChunks: ArrayBuffer[] = [];
   private closed = false;
@@ -110,7 +111,8 @@ export class TelnyxSTTSession {
       this.handleMessage(event);
     };
 
-    this.ws.onerror = () => {
+    this.ws.onerror = (event: Event) => {
+      console.error("[TelnyxSTT] WebSocket error:", event);
       this.closed = true;
     };
 
