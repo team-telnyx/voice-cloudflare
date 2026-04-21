@@ -38,6 +38,12 @@ export interface TelnyxTTSConfig extends TelnyxClientConfig {
    * @default "rest"
    */
   backend?: "rest" | "websocket";
+  /**
+   * Override the WebSocket URL for the TTS streaming backend.
+   * Only used when `backend` is `"websocket"`.
+   * @default "wss://api.telnyx.com/v2/text-to-speech/speech"
+   */
+  ttsWsUrl?: string;
 }
 
 /** Frame received from the Telnyx TTS WebSocket. */
@@ -52,7 +58,7 @@ interface TelnyxWSFrame {
 /** Default voice when none is specified in config. */
 const DEFAULT_VOICE = "Telnyx.NaturalHD.astra";
 const TTS_PATH = "/text-to-speech/speech";
-const DEFAULT_WS_URL = "wss://api.telnyx.com/v2/text-to-speech/speech";
+const DEFAULT_TTS_WS_URL = "wss://api.telnyx.com/v2/text-to-speech/speech";
 
 // ─── Implementation ─────────────────────────────────────────────────────────
 
@@ -60,11 +66,13 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
   private client: TelnyxClient;
   private voice: string;
   private backend: "rest" | "websocket";
+  private ttsWsUrl: string;
 
   constructor(config: TelnyxTTSConfig) {
     this.client = new TelnyxClient(config);
     this.voice = config.voice ?? DEFAULT_VOICE;
     this.backend = config.backend ?? "rest";
+    this.ttsWsUrl = config.ttsWsUrl ?? DEFAULT_TTS_WS_URL;
   }
 
   // ─── TTSProvider ───────────────────────────────────────────────────────
@@ -170,7 +178,7 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
     text: string,
     signal?: AbortSignal
   ): AsyncGenerator<ArrayBuffer> {
-    const url = `${DEFAULT_WS_URL}?voice=${encodeURIComponent(this.voice)}`;
+    const url = `${this.ttsWsUrl}?voice=${encodeURIComponent(this.voice)}`;
 
     let ws: WebSocket;
 

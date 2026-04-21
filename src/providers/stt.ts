@@ -21,6 +21,11 @@ export interface TelnyxSTTConfig extends TelnyxClientConfig {
   transcriptionModel?: string;
   /** Enable interim results (default: true) */
   interimResults?: boolean;
+  /**
+   * Override the WebSocket URL for the STT streaming endpoint.
+   * @default "wss://api.telnyx.com/v2/speech-to-text/transcription"
+   */
+  sttWsUrl?: string;
 }
 
 export interface TelnyxSTTSessionOptions {
@@ -45,7 +50,7 @@ export class TelnyxSTT implements Transcriber {
     this.inputFormat = config.inputFormat ?? "pcm";
     this.transcriptionModel = config.transcriptionModel;
     this.interimResults = config.interimResults ?? true;
-    this.sttUrl = config.wsUrl ?? DEFAULT_STT_URL;
+    this.sttUrl = config.sttWsUrl ?? DEFAULT_STT_URL;
   }
 
   createSession(options?: TelnyxSTTSessionOptions): TelnyxSTTSession {

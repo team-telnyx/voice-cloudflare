@@ -3,8 +3,8 @@
  *
  * This shows how to run a VoiceClient with default mic capture for
  * the browser user, while also bridging a PSTN phone call through
- * a second TelnyxCallBridge. The agent can interact with both the
- * browser user and the phone caller.
+ * a TelnyxCallBridge. The bridge operates independently from the
+ * VoiceClient — it captures phone audio and can play audio back.
  *
  * Environment variables (set via `wrangler secret put`):
  *   TELNYX_API_KEY              — your Telnyx API key
@@ -60,19 +60,28 @@ const CLIENT_HTML = `<!DOCTYPE html>
     <p>Status: <span id="phone-status">Idle</span></p>
   </section>
 
+  <!--
+    NOTE: This example uses bare module specifiers (e.g. "@telnyx/voice-cloudflare").
+    You need a bundler (Vite, esbuild, webpack) or an import map to resolve them.
+  -->
   <script type="module">
     import { TelnyxCallBridge } from "@telnyx/voice-cloudflare";
     import { VoiceClient } from "@cloudflare/voice/client";
 
-    // ── Browser agent (default mic) ──
+    // -- Browser agent (default mic) --
     document.getElementById("browser-connect").onclick = async () => {
-      // No audioInput → VoiceClient uses its built-in mic capture
+      // No audioInput -> VoiceClient uses its built-in mic capture
       const voiceClient = new VoiceClient({ agent: "my-voice-agent" });
-      await voiceClient.connect();
-      document.getElementById("browser-connect").textContent = "Connected (Mic)";
+      voiceClient.connect();
+      voiceClient.addEventListener("connectionchange", async (connected) => {
+        if (connected) {
+          await voiceClient.startCall();
+          document.getElementById("browser-connect").textContent = "Connected (Mic)";
+        }
+      });
     };
 
-    // ── Phone bridge (separate TelnyxCallBridge) ──
+    // -- Phone bridge (separate TelnyxCallBridge, independent of VoiceClient) --
     let bridge;
     let credentialId;
 
@@ -81,11 +90,11 @@ const CLIENT_HTML = `<!DOCTYPE html>
 
       // Fetch JWT from server
       const res = await fetch("/api/telnyx-token", { method: "POST" });
-      const { token, credentialId: cid } = await res.json();
-      credentialId = cid;
+      const data = await res.json();
+      credentialId = data.credentialId;
 
       // Create bridge manually (not as VoiceClient audioInput)
-      bridge = new TelnyxCallBridge({ loginToken: token });
+      bridge = new TelnyxCallBridge({ loginToken: data.token });
       await bridge.start();
 
       document.getElementById("phone-status").textContent = "Connected — ready to dial";

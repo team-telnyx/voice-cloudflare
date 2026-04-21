@@ -2,8 +2,15 @@
   "name": "@telnyx/voice-cloudflare",
   "version": "0.1.0",
   "description": "Telnyx voice providers for the Cloudflare Agents SDK",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

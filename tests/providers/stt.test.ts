@@ -119,10 +119,10 @@ describe("TelnyxSTT", () => {
       expect(ws.url).toContain("token=KEY_abc123");
     });
 
-    it("uses wsUrl override when provided", () => {
+    it("uses sttWsUrl override when provided", () => {
       const stt = new TelnyxSTT({
         apiKey: "test-key",
-        wsUrl: "ws://localhost:9000/stt",
+        sttWsUrl: "ws://localhost:9000/stt",
       });
       stt.createSession();
 
