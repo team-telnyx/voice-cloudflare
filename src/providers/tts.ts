@@ -52,6 +52,7 @@ interface TelnyxWSFrame {
 /** Default voice when none is specified in config. */
 const DEFAULT_VOICE = "Telnyx.NaturalHD.astra";
 const TTS_PATH = "/text-to-speech/speech";
+const DEFAULT_WS_URL = "wss://api.telnyx.com/v2/text-to-speech/speech";
 
 // ─── Implementation ─────────────────────────────────────────────────────────
 
@@ -88,6 +89,12 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
 
   // ─── StreamingTTSProvider ──────────────────────────────────────────────
 
+  /**
+   * Stream synthesized audio chunks.
+   *
+   * With the REST backend this yields a single buffered chunk (the complete
+   * audio); only the WebSocket backend provides true incremental streaming.
+   */
   async *synthesizeStream(
     text: string,
     signal?: AbortSignal
@@ -98,6 +105,7 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
       if (this.backend === "websocket") {
         yield* this.streamViaWS(text, signal);
       } else {
+        // REST cannot stream — fetch complete audio then yield as one chunk.
         const audio = await this.synthesizeViaREST(text, signal);
         if (audio) yield audio;
       }
@@ -162,8 +170,7 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
     text: string,
     signal?: AbortSignal
   ): AsyncGenerator<ArrayBuffer> {
-    const wsBase = this.client.wsUrl.replace(/\/stream$/, "");
-    const url = `${wsBase}${TTS_PATH}?voice=${encodeURIComponent(this.voice)}`;
+    const url = `${DEFAULT_WS_URL}?voice=${encodeURIComponent(this.voice)}`;
 
     let ws: WebSocket;
 
@@ -282,10 +289,14 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
     }
 
     try {
-      // Telnyx TTS protocol: init → content → stop
-      ws.send(JSON.stringify({ text: " " }));
-      ws.send(JSON.stringify({ text }));
-      ws.send(JSON.stringify({ text: "" }));
+      // Telnyx TTS protocol: all three frames are sent back-to-back without
+      // waiting for server ACKs. This is the correct protocol — the server
+      // begins streaming audio after receiving the stop frame and does not
+      // send any acknowledgment for init or content frames.
+      // Verified against live API 2026-04-19.
+      ws.send(JSON.stringify({ text: " " }));  // 1. init
+      ws.send(JSON.stringify({ text }));         // 2. content
+      ws.send(JSON.stringify({ text: "" }));    // 3. stop (triggers synthesis)
 
       while (!signal?.aborted) {
         await waitForData();

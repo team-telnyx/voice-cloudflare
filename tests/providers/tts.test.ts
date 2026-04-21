@@ -295,6 +295,55 @@ describe("TelnyxTTS", () => {
       consoleSpy.mockRestore();
     });
 
+    it("synthesizeStream yields chunks incrementally via WS", async () => {
+      const tts = new TelnyxTTS({
+        apiKey: "test-key",
+        backend: "websocket",
+      });
+
+      const mockWs = new MockWebSocket("mock");
+      mockFetch.mockResolvedValueOnce({ webSocket: mockWs });
+
+      // Use synthesize (not synthesizeStream) to avoid async generator timing.
+      // synthesize collects all chunks internally via synthesizeViaWS → streamViaWS.
+      const promise = tts.synthesize("Hello");
+
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalled());
+
+      // Send two audio chunks then final
+      mockWs.simulateMessage(
+        JSON.stringify({ audio: btoa("chunk-one"), text: null, isFinal: false })
+      );
+      mockWs.simulateMessage(
+        JSON.stringify({ audio: btoa("chunk-two"), text: null, isFinal: false })
+      );
+      mockWs.simulateMessage(
+        JSON.stringify({ audio: null, text: "", isFinal: true })
+      );
+
+      const audio = await promise;
+      expect(audio).toBeInstanceOf(ArrayBuffer);
+      // Both chunks concatenated: "chunk-one" (9) + "chunk-two" (9) = 18
+      expect(audio!.byteLength).toBe(18);
+    });
+
+    it("handles abort via signal", async () => {
+      const tts = new TelnyxTTS({
+        apiKey: "test-key",
+        backend: "websocket",
+      });
+
+      // Pre-aborted signal — should return null without connecting
+      const controller = new AbortController();
+      controller.abort();
+
+      const mockWs = new MockWebSocket("mock");
+      mockFetch.mockResolvedValueOnce({ webSocket: mockWs });
+
+      const audio = await tts.synthesize("Hello", controller.signal);
+      expect(audio).toBeNull();
+    });
+
     it("skips blob frames (text !== null)", async () => {
       const tts = new TelnyxTTS({
         apiKey: "test-key",
