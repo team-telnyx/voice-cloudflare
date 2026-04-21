@@ -82,7 +82,7 @@ interface SessionParams {
 }
 
 export class TelnyxSTTSession implements TranscriberSession {
-  private ws: WebSocket;
+  private ws: WebSocket | null = null;
   private pendingChunks: ArrayBuffer[] = [];
   private closed = false;
   private onInterim?: (text: string) => void;
@@ -100,38 +100,75 @@ export class TelnyxSTTSession implements TranscriberSession {
     if (params.transcriptionModel) {
       url.searchParams.set("transcription_model", params.transcriptionModel);
     }
-    url.searchParams.set("token", params.apiKey);
 
-    this.ws = new WebSocket(url.toString());
+    this.connect(url.toString(), params.apiKey);
+  }
 
-    this.ws.onopen = () => {
+  private async connect(wsUrl: string, apiKey: string): Promise<void> {
+    try {
+      // Use the Cloudflare Workers fetch-upgrade pattern so the API key
+      // is sent via Authorization header instead of a query-string token.
+      const resp = await fetch(wsUrl.replace("wss://", "https://"), {
+        headers: {
+          Upgrade: "websocket",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      const ws = (resp as unknown as { webSocket?: WebSocket }).webSocket;
+      if (!ws) {
+        throw new Error(
+          "STT WebSocket requires the Cloudflare Workers runtime. " +
+            "The fetch-upgrade did not return a WebSocket pair."
+        );
+      }
+
+      // Register listeners BEFORE accepting the connection to avoid
+      // a race where frames arrive between accept() and addEventListener().
+      ws.addEventListener("message", (event: MessageEvent) => {
+        this.handleMessage(event);
+      });
+
+      ws.addEventListener("error", (event: Event) => {
+        console.error("[TelnyxSTT] WebSocket error:", event);
+        this.closed = true;
+      });
+
+      ws.addEventListener("close", () => {
+        this.closed = true;
+      });
+
+      // Now accept — listeners are already in place.
+      (ws as unknown as { accept: () => void }).accept();
+
       if (this.closed) return;
+
+      this.ws = ws;
+
+      // Flush any chunks buffered while the connection was being established.
       for (const chunk of this.pendingChunks) {
-        this.ws.send(chunk);
+        ws.send(chunk);
       }
       this.pendingChunks = [];
-    };
-
-    this.ws.onmessage = (event: MessageEvent) => {
-      this.handleMessage(event);
-    };
-
-    this.ws.onerror = (event: Event) => {
-      console.error("[TelnyxSTT] WebSocket error:", event);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("Cloudflare Workers")
+      ) {
+        console.error(`[TelnyxSTT] ${error.message}`);
+      } else {
+        console.error("[TelnyxSTT] WebSocket connection failed:", error);
+      }
       this.closed = true;
-    };
-
-    this.ws.onclose = () => {
-      this.closed = true;
-    };
+    }
   }
 
   feed(chunk: ArrayBuffer): void {
     if (this.closed) return;
 
-    if (this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws) {
       this.ws.send(chunk);
-    } else if (this.ws.readyState === WebSocket.CONNECTING) {
+    } else {
       this.pendingChunks.push(chunk);
     }
   }
@@ -140,7 +177,7 @@ export class TelnyxSTTSession implements TranscriberSession {
     if (this.closed) return;
     this.closed = true;
     this.pendingChunks = [];
-    this.ws.close();
+    this.ws?.close();
   }
 
   private handleMessage(event: MessageEvent): void {
