@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:client": "esbuild client/main.ts --bundle --outfile=public/client.js --format=esm --target=es2022",
-    "dev": "npm run build:client && wrangler dev",
-    "deploy": "npm run build:client && wrangler deploy"
+    "build:client": "npx esbuild client/main.ts --bundle --outfile=public/client.js --format=esm --target=es2022",
+    "dev": "npm run build:client && npx wrangler dev",
+    "deploy": "npm run build:client && npx wrangler deploy"
   },
   "dependencies": {
     "@cloudflare/voice": "^0.1.0",
