@@ -468,13 +468,36 @@ export class TelnyxPhoneClient {
   private handleAudio(audio: ArrayBuffer): void {
     if (this._audioFormat === "pcm16" || this._audioFormat === null) {
       this.bridge.playAudio(audio);
-    } else if (!this.warnedFormat) {
-      this.warnedFormat = true;
-      console.warn(
-        `[TelnyxPhoneClient] Server audio format is "${this._audioFormat}". ` +
-          `TelnyxCallBridge expects pcm16 (16kHz mono Int16 LE). ` +
-          `Set audioFormat: "pcm16" in your server-side VoiceAgentOptions.`
-      );
+    } else {
+      // Non-PCM format (mp3, wav, opus) — decode to PCM16 via AudioContext
+      this.decodeAndPlay(audio);
+    }
+  }
+
+  private decodeContext: AudioContext | null = null;
+
+  private async decodeAndPlay(audio: ArrayBuffer): Promise<void> {
+    try {
+      if (!this.decodeContext) {
+        this.decodeContext = new AudioContext({ sampleRate: 16000 });
+      }
+      const decoded = await this.decodeContext.decodeAudioData(audio.slice(0));
+      const float32 = decoded.getChannelData(0);
+      // Convert float32 → Int16 PCM
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      this.bridge.playAudio(int16.buffer as ArrayBuffer);
+    } catch (err) {
+      if (!this.warnedFormat) {
+        this.warnedFormat = true;
+        console.warn(
+          `[TelnyxPhoneClient] Failed to decode "${this._audioFormat}" audio:`,
+          err
+        );
+      }
     }
   }
 

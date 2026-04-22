@@ -104,20 +104,20 @@ describe("TelnyxSTT", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, opts] = mockFetch.mock.calls[0];
       expect(url).toBe(
-        "https://api.telnyx.com/v2/speech-to-text/transcription?transcription_engine=Telnyx&input_format=pcm&language=en&interim_results=true"
+        "https://api.telnyx.com/v2/speech-to-text/transcription?transcription_engine=Telnyx&input_format=wav&language=en&interim_results=true&token=test-key"
       );
       expect(opts.headers.Authorization).toBe("Bearer test-key");
       expect(opts.headers.Upgrade).toBe("websocket");
     });
 
-    it("does not leak the API key in the URL", async () => {
+    it("includes API key as token query param and Authorization header", async () => {
       const stt = new TelnyxSTT({ apiKey: "KEY_abc123" });
       stt.createSession();
       await flushConnection();
 
-      const [url] = mockFetch.mock.calls[0];
-      expect(url).not.toContain("KEY_abc123");
-      expect(url).not.toContain("token=");
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toContain("token=KEY_abc123");
+      expect(opts.headers.Authorization).toBe("Bearer KEY_abc123");
     });
 
     it("includes custom engine and input format in the fetch URL", async () => {
@@ -144,7 +144,7 @@ describe("TelnyxSTT", () => {
 
       const [url] = mockFetch.mock.calls[0];
       expect(url).toBe(
-        "https://localhost:9000/stt?transcription_engine=Telnyx&input_format=pcm&language=en&interim_results=true"
+        "https://localhost:9000/stt?transcription_engine=Telnyx&input_format=wav&language=en&interim_results=true&token=test-key"
       );
     });
 
@@ -189,6 +189,35 @@ describe("TelnyxSTT", () => {
       // Listeners registered before accept
       expect(ws.addEventListener).toHaveBeenCalledBefore(ws.accept);
     });
+
+    it("sends a 44-byte WAV header before any audio when format is wav", async () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key" });
+      stt.createSession();
+      await flushConnection();
+
+      const ws = mockWebSockets[0];
+      // First send should be the WAV header
+      expect(ws.send).toHaveBeenCalledTimes(1);
+      const header = ws.send.mock.calls[0][0] as ArrayBuffer;
+      expect(header.byteLength).toBe(44);
+
+      // Verify RIFF and WAVE markers
+      const view = new DataView(header);
+      expect(view.getUint32(0)).toBe(0x52494646); // "RIFF"
+      expect(view.getUint32(8)).toBe(0x57415645); // "WAVE"
+      expect(view.getUint16(22, true)).toBe(1); // mono
+      expect(view.getUint32(24, true)).toBe(16000); // 16kHz
+    });
+
+    it("does not send WAV header when format is not wav", async () => {
+      const stt = new TelnyxSTT({ apiKey: "test-key", inputFormat: "webm" });
+      stt.createSession();
+      await flushConnection();
+
+      const ws = mockWebSockets[0];
+      // No WAV header sent
+      expect(ws.send).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -208,9 +237,12 @@ describe("TelnyxSTTSession", () => {
         expect(mockWebSockets[0].send).not.toHaveBeenCalled();
       }
 
-      // After connection settles, the buffered chunk is flushed
+      // After connection settles: WAV header + buffered chunk are flushed
       await flushConnection();
-      expect(mockWebSockets[0].send).toHaveBeenCalledWith(chunk);
+      const ws = mockWebSockets[0];
+      // call 1 = WAV header, call 2 = buffered chunk
+      expect(ws.send).toHaveBeenCalledTimes(2);
+      expect(ws.send).toHaveBeenNthCalledWith(2, chunk);
     });
 
     it("flushes buffered chunks when connection is established", async () => {
@@ -225,9 +257,10 @@ describe("TelnyxSTTSession", () => {
       await flushConnection();
 
       const ws = mockWebSockets[0];
-      expect(ws.send).toHaveBeenCalledTimes(2);
-      expect(ws.send).toHaveBeenNthCalledWith(1, chunk1);
-      expect(ws.send).toHaveBeenNthCalledWith(2, chunk2);
+      // call 1 = WAV header, call 2 = chunk1, call 3 = chunk2
+      expect(ws.send).toHaveBeenCalledTimes(3);
+      expect(ws.send).toHaveBeenNthCalledWith(2, chunk1);
+      expect(ws.send).toHaveBeenNthCalledWith(3, chunk2);
     });
 
     it("sends chunks directly when connection is already open", async () => {

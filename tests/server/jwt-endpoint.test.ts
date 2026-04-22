@@ -75,6 +75,7 @@ describe("TelnyxJWTEndpoint", () => {
 
       expect(result.token).toBe(MOCK_TOKEN_RESPONSE.data);
       expect(result.credentialId).toBe("cred-789");
+      expect(result.sipUsername).toBe("gencredABC");
 
       // Verify first call: create telephony credential
       expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -214,6 +215,7 @@ describe("TelnyxJWTEndpoint", () => {
       const body = await response.json();
       expect(body.token).toBe(MOCK_TOKEN_RESPONSE.data);
       expect(body.credentialId).toBe("cred-789");
+      expect(body.sipUsername).toBe("gencredABC");
     });
 
     it("revokes a credential on DELETE with credentialId in body", async () => {

@@ -46,6 +46,8 @@ export interface TelnyxVoiceSetup {
   audioInput: TelnyxCallBridge;
   /** The server-side credential ID (for manual cleanup if needed). */
   credentialId: string;
+  /** The SIP username (e.g. "genCredXYZ123") — call this to reach the agent. */
+  sipUsername: string;
   /** Stop the bridge and revoke the server-side credential. */
   cleanup: () => Promise<void>;
 }
@@ -70,6 +72,7 @@ export async function createTelnyxVoiceConfig(
   const body = (await response.json()) as {
     token?: string;
     credentialId?: string;
+    sipUsername?: string;
   };
 
   if (!body.token) {
@@ -77,6 +80,7 @@ export async function createTelnyxVoiceConfig(
   }
 
   const credentialId = body.credentialId ?? "";
+  const sipUsername = body.sipUsername ?? "";
 
   // Create the bridge with the fetched token
   const bridgeConfig: TelnyxCallBridgeConfig = {
@@ -103,6 +107,7 @@ export async function createTelnyxVoiceConfig(
     bridge,
     audioInput: bridge,
     credentialId,
+    sipUsername,
     cleanup,
   };
 }

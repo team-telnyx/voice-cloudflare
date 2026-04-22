@@ -196,7 +196,9 @@ describe("TelnyxCallBridge", () => {
       },
       createMediaStreamSource: vi.fn(() => mockSourceNode),
       close: vi.fn(),
-      sampleRate: 16000,
+      state: "running",
+      resume: vi.fn().mockResolvedValue(undefined),
+      sampleRate: 48000,
     };
 
     beforeEach(async () => {
@@ -218,6 +220,19 @@ describe("TelnyxCallBridge", () => {
         revokeObjectURL: vi.fn(),
       });
       vi.stubGlobal("Blob", vi.fn());
+      vi.stubGlobal("MediaStream", vi.fn(() => ({})));
+      const mockAudioEl = {
+        srcObject: null as any,
+        autoplay: false,
+        volume: 1,
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: vi.fn(),
+        remove: vi.fn(),
+      };
+      vi.stubGlobal("document", {
+        createElement: vi.fn(() => mockAudioEl),
+        body: { appendChild: vi.fn() },
+      });
 
       const { __mockClient } = await import("@telnyx/webrtc") as any;
       const handlers: Record<string, Function> = {};
@@ -234,7 +249,10 @@ describe("TelnyxCallBridge", () => {
       mockCall = {
         id: "call-123",
         state: "active",
-        remoteStream: { getAudioTracks: () => [{ kind: "audio" }] },
+        remoteStream: { getAudioTracks: () => [{
+          kind: "audio", readyState: "live", enabled: true, muted: false,
+          addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        }] },
         answer: vi.fn(),
         hangup: vi.fn(),
         dtmf: vi.fn(),
@@ -245,21 +263,25 @@ describe("TelnyxCallBridge", () => {
       vi.unstubAllGlobals();
     });
 
-    it("creates AudioContext at 16kHz when call becomes active", () => {
-      notificationHandler({ type: "callUpdate", call: mockCall });
-      expect(AudioContext).toHaveBeenCalledWith({ sampleRate: 16000 });
-    });
-
-    it("creates MediaStreamSource from call.remoteStream", async () => {
+    it("creates AudioContext at 48kHz when call becomes active", async () => {
       notificationHandler({ type: "callUpdate", call: mockCall });
       await vi.waitFor(() => {
-        expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledWith(mockCall.remoteStream);
+        expect(AudioContext).toHaveBeenCalledWith({ sampleRate: 48000 });
       });
     });
 
-    it("loads the PCM capture AudioWorklet processor", () => {
+    it("creates MediaStreamSource from remote audio track", async () => {
       notificationHandler({ type: "callUpdate", call: mockCall });
-      expect(mockAudioContext.audioWorklet.addModule).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalled();
+      });
+    });
+
+    it("loads the PCM capture AudioWorklet processor", async () => {
+      notificationHandler({ type: "callUpdate", call: mockCall });
+      await vi.waitFor(() => {
+        expect(mockAudioContext.audioWorklet.addModule).toHaveBeenCalled();
+      });
     });
 
     it("calls onAudioData with Int16 PCM when worklet posts audio", async () => {
@@ -272,7 +294,8 @@ describe("TelnyxCallBridge", () => {
         expect(workletMessageHandler).not.toBeNull();
       });
 
-      const frame = new Float32Array([0.5, -0.5, 0.0, 1.0]);
+      // 12 input samples at 48kHz → 4 output samples after 3x downsampling
+      const frame = new Float32Array([0.5, -0.5, 0.0, 1.0, 0.5, -0.5, 0.0, 1.0, 0.5, -0.5, 0.0, 1.0]);
       workletMessageHandler!({ data: frame } as MessageEvent);
 
       expect(audioDataSpy).toHaveBeenCalledTimes(1);
@@ -292,7 +315,8 @@ describe("TelnyxCallBridge", () => {
         expect(workletMessageHandler).not.toBeNull();
       });
 
-      const frame = new Float32Array([0.5, -0.5, 0.5, -0.5]);
+      // 12 input samples at 48kHz → 4 output samples after 3x downsampling
+      const frame = new Float32Array([0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5]);
       workletMessageHandler!({ data: frame } as MessageEvent);
 
       expect(audioLevelSpy).toHaveBeenCalledTimes(1);

@@ -260,14 +260,17 @@ describe("TelnyxPhoneClient", () => {
       expect(bridge.playAudio).toHaveBeenCalledWith(audio);
     });
 
-    it("warns and skips non-pcm16 audio", async () => {
+    it("warns when non-pcm16 audio decode fails (no AudioContext in Node)", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       await startCall(client, transport);
       transport._fireMessage('{"type":"audio_config","format":"mp3"}');
       transport._fireMessage(new ArrayBuffer(640));
-      expect(bridge.playAudio).not.toHaveBeenCalled();
+      // In a browser, this would decode MP3 → PCM via AudioContext.
+      // In Node/test, AudioContext is undefined so it warns on decode failure.
+      await new Promise((r) => setTimeout(r, 0));
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Server audio format is "mp3"')
+        expect.stringContaining('Failed to decode "mp3" audio'),
+        expect.any(Error)
       );
     });
 
