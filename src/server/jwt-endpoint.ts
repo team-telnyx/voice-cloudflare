@@ -53,7 +53,7 @@ export class TelnyxJWTEndpoint {
    *
    * @returns The JWT token string and the credential ID (for later revocation).
    */
-  async createToken(): Promise<{ token: string; credentialId: string }> {
+  async createToken(): Promise<{ token: string; credentialId: string; sipUsername: string }> {
     // Step 1: Create telephony credential
     const credResponse = await fetch(
       `${this.baseUrl}/telephony_credentials`,
@@ -76,9 +76,10 @@ export class TelnyxJWTEndpoint {
     }
 
     const credBody = (await credResponse.json()) as {
-      data: { id: string };
+      data: { id: string; sip_username: string };
     };
     const credentialId = credBody.data.id;
+    const sipUsername = credBody.data.sip_username;
 
     // Step 2: Generate JWT from the credential
     const tokenResponse = await fetch(
@@ -96,9 +97,19 @@ export class TelnyxJWTEndpoint {
       throw new Error(`Failed to generate JWT: ${tokenResponse.status}`);
     }
 
-    const tokenBody = (await tokenResponse.json()) as { data: string };
+    // The Telnyx token endpoint may return a raw JWT string or a JSON
+    // wrapper like { data: "eyJ..." }. Handle both.
+    const tokenText = await tokenResponse.text();
+    let token: string;
+    try {
+      const parsed = JSON.parse(tokenText);
+      token = typeof parsed === "string" ? parsed : parsed.data;
+    } catch {
+      // Raw JWT string (not JSON-wrapped)
+      token = tokenText;
+    }
 
-    return { token: tokenBody.data, credentialId };
+    return { token, credentialId, sipUsername };
   }
 
   /**

@@ -1,0 +1,16 @@
+name = "telnyx-phone-voice-agent"
+main = "src/index.ts"
+compatibility_date = "2025-04-14"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+
+[durable_objects]
+bindings = [
+  { name = "VOICE_AGENT", class_name = "VoiceAgent" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgent"]
