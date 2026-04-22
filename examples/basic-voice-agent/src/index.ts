@@ -19,7 +19,7 @@ interface Env {
   VOICE_AGENT: DurableObjectNamespace;
 }
 
-const BaseVoiceAgent = withVoice(Agent, { audioFormat: "pcm16" });
+const BaseVoiceAgent = withVoice(Agent);
 
 export class VoiceAgent extends BaseVoiceAgent<Env> {
   transcriber = new TelnyxSTT({ apiKey: this.env.TELNYX_API_KEY });

@@ -12,7 +12,9 @@
  *   **Requires the Cloudflare Workers runtime** (uses the fetch-upgrade pattern).
  *   Does NOT support Telnyx Ultra voices.
  *
- * Audio format: mp3 (24kHz mono) — matches the Cloudflare pipeline default.
+ * Audio format: MP3 by default — matches the Cloudflare voice pipeline's
+ * default `audioFormat: "mp3"` setting. The Telnyx REST API returns MP3
+ * regardless of format parameters.
  */
 
 import type { TTSProvider, StreamingTTSProvider } from "@cloudflare/voice";
@@ -138,7 +140,6 @@ export class TelnyxTTS implements TTSProvider, StreamingTTSProvider {
       body: JSON.stringify({
         text,
         voice: this.voice,
-        output_type: "binary_output",
       }),
       signal,
     });
@@ -337,3 +338,4 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   }
   return bytes.buffer;
 }
+
