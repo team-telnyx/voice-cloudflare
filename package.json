@@ -24,9 +24,9 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "check": "tsc --noEmit",
+    "build": "npx tsc",
+    "dev": "npx tsc --watch",
+    "check": "npx tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",
