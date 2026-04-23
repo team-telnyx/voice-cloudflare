@@ -11,12 +11,18 @@
 
 ## Architecture Decision
 
-**Single repo, single package.** All three providers (STT, TTS, Transport) live in `@telnyx/voice-cloudflare` because:
+**Single repo, single package with subpath exports.** All three capabilities (STT, TTS, Telephony) live in `@telnyx/voice-cloudflare` with independent entry points:
 
-- All three share Telnyx auth, client setup, and types
-- Follows the same pattern as `@cloudflare/voice` itself
+- `@telnyx/voice-cloudflare/stt` — STT only, no `@telnyx/webrtc` dependency
+- `@telnyx/voice-cloudflare/tts` — TTS only, no `@telnyx/webrtc` dependency
+- `@telnyx/voice-cloudflare/telephony` — PSTN bridge, phone client, JWT endpoint
+- `@telnyx/voice-cloudflare` — everything (main entrypoint)
+
+**Why monolith with subpaths:**
+- Matches the `@cloudflare/voice-{provider}` naming convention (Deepgram, ElevenLabs, Twilio)
 - One version, one install, one CI pipeline
-- Users pick the providers they need: `import { TelnyxSTT, TelnyxTransport } from "@telnyx/voice-cloudflare"`
+- Subpath exports let users avoid pulling `@telnyx/webrtc` into their bundle when they only need STT/TTS
+- Can split into separate packages later if needed — can't easily merge back
 
 **Not a fork of cloudflare/agents.** Provider interfaces are designed to be implemented externally — no modifications to the Cloudflare SDK needed. The PR to `cloudflare/agents` will be for documentation/example listing as a third-party provider.
 
