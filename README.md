@@ -16,6 +16,24 @@ Requires `@cloudflare/voice` as a peer dependency:
 npm install @cloudflare/voice
 ```
 
+### Subpath Imports
+
+Import only what you need — each subpath is independent:
+
+```typescript
+// STT only (no @telnyx/webrtc dependency)
+import { TelnyxSTT } from "@telnyx/voice-cloudflare/stt";
+
+// TTS only (no @telnyx/webrtc dependency)
+import { TelnyxTTS } from "@telnyx/voice-cloudflare/tts";
+
+// Telephony (PSTN bridge, phone client, JWT endpoint)
+import { TelnyxCallBridge, TelnyxPhoneClient } from "@telnyx/voice-cloudflare/telephony";
+
+// Or import everything from the main entrypoint
+import { TelnyxSTT, TelnyxTTS, TelnyxCallBridge } from "@telnyx/voice-cloudflare";
+```
+
 ## Quick Start
 
 ### Browser Voice Agent (STT + TTS)
@@ -202,6 +220,7 @@ Set these via `wrangler secret put` for Cloudflare Workers.
 
 See the [`examples/`](./examples) directory:
 
+- **[`basic-voice-agent`](./examples/basic-voice-agent)** -- Browser mic → Telnyx STT → AI agent → Telnyx TTS → browser speaker
 - **[`phone-voice-agent`](./examples/phone-voice-agent)** -- Phone call routed to an AI agent via `TelnyxPhoneClient`
 - **[`hybrid-agent`](./examples/hybrid-agent)** -- Browser mic + phone bridge running side-by-side
 

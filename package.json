@@ -9,6 +9,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./stt": {
+      "types": "./dist/stt.d.ts",
+      "import": "./dist/stt.js"
+    },
+    "./tts": {
+      "types": "./dist/tts.d.ts",
+      "import": "./dist/tts.js"
+    },
+    "./telephony": {
+      "types": "./dist/telephony.d.ts",
+      "import": "./dist/telephony.js"
     }
   },
   "scripts": {
