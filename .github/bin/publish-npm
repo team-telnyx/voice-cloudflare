@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -eux
+
+# Authenticate -- prefer OIDC, fall back to NPM_TOKEN
+if [[ ${NPM_TOKEN:-} ]]; then
+  npm config set '//registry.npmjs.org/:_authToken' "$NPM_TOKEN"
+elif [[ ! ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-} ]]; then
+  echo "ERROR: NPM_TOKEN must be set if not running in a GitHub Action with id-token permission"
+  exit 1
+fi
+
+npm run build
+
+PACKAGE_NAME="$(jq -r -e '.name' ./package.json)"
+VERSION="$(jq -r -e '.version' ./package.json)"
+
+# Check if already published
+LAST_VERSION="$(npm view "$PACKAGE_NAME" version 2>/dev/null || true)"
+if [[ "$LAST_VERSION" == "$VERSION" ]]; then
+  echo "$PACKAGE_NAME@$VERSION is already published — skipping"
+  exit 0
+fi
+
+# Determine tag: pre-release versions get their pre-release tag, stable gets "latest"
+TAG="latest"
+if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+  CURRENT_TAG="${BASH_REMATCH[1]}"
+  if [[ -n "$LAST_VERSION" && ! "$LAST_VERSION" =~ -([a-zA-Z]+) ]]; then
+    TAG="$CURRENT_TAG"
+  fi
+fi
+
+echo "Publishing $PACKAGE_NAME@$VERSION with tag '$TAG'"
+npm publish --access public --no-git-checks --tag "$TAG"
