@@ -43,6 +43,10 @@
     "sip",
     "telephony"
   ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "author": "Telnyx",
   "license": "MIT",
   "peerDependencies": {
