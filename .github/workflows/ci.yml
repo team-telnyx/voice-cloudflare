@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 20
 
-      - run: rm -rf node_modules && npm install
+      - run: rm -rf node_modules package-lock.json && npm install
 
       - name: Type check
         run: npx tsc --noEmit
